@@ -19,7 +19,11 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE: ttl.sh/val4evr-capstone:24h
+  # Unique image NAME per commit (uniqueness lives in the name, the ttl.sh TTL
+  # lives in the tag). A fixed tag + IfNotPresent made kubelet reuse cached old
+  # bytes after `rollout restart`; a per-commit name makes every deploy a real,
+  # unambiguous image change.
+  IMAGE: ttl.sh/val4evr-capstone-${{ github.sha }}:24h
 
 jobs:
   test-and-build:
@@ -113,13 +117,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Apply manifests
         run: kubectl apply -f k8s/
-      - name: Roll the deployment
-        # Fixed tag -> apply alone won't repull; restart forces new pods that
-        # pull the image this run just pushed.
+      - name: Point the deployment at this run's image
+        # The manifest's image is a placeholder; the per-commit image name makes
+        # the rollout an unambiguous change (no stale-cache reuse possible).
         run: |
-          kubectl rollout restart deployment/capstone
+          kubectl set image deployment/capstone capstone="$IMAGE"
           kubectl rollout status deployment/capstone --timeout=120s
       - name: Verify kubernetes (hostPort + Service)
+        # Retry: rollout status returns on pod Ready, but the hostPort handover
+        # can lag a second or two behind.
         run: |
-          curl -fsS http://localhost:4444/ | grep '"name":"Hello"'
+          for i in $(seq 1 15); do
+            curl -fsS http://localhost:4444/ >/dev/null 2>&1 && break || sleep 2
+          done
+          curl -fsS http://localhost:4444/  | grep '"name":"Hello"'
           curl -fsS http://localhost:30444/ | grep '"name":"Hello"'

@@ -9,6 +9,11 @@ metadata:
     app: capstone
 spec:
   replicas: 1
+  # hostPort means only one pod can bind :4444 per node — RollingUpdate would
+  # deadlock (new pod Pending while old pod owns the port). Recreate kills the
+  # old pod first.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: capstone

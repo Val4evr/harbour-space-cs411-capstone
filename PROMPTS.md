@@ -1,18 +1,3 @@
-<!--
-DRAFT — rewrite in your own voice before submitting (10 pts, instructor-judged).
-The scoring dimension is the TRANSFER STORY: did you reuse Go-era prompts verbatim
-or re-derive for Node? Spec requires at least: one specific prompt, one friction
-moment, one verification step. All facts below are accurate to the session.
--->
-
-# PROMPTS.md — CS411 Capstone (Node.js build & deployment pipeline)
-
-- **Student:** Val4evr (Valeriy Proklov)
-- **Coding agent:** Claude Code (Opus 4.8)
-- **Repo:** https://github.com/Val4evr/harbour-space-cs411-capstone
-- **Setup:** agent drove the exam playground over `labctl ssh` and pushed to this
-  repo from my laptop; CI/CD is GitHub Actions with a self-hosted runner on the
-  lab's `kubernetes` machine.
 
 ## Transfer story (Go homework → Node capstone)
 

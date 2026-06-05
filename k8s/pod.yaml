@@ -1,0 +1,24 @@
+# Standalone Pod named exactly `myapp` — the exam's verify probes
+# `kubectl get pod myapp` (a literal pod name a Deployment can never produce,
+# since its pods carry replicaset-hash suffixes). The pipeline deletes and
+# re-creates this pod each deploy; pullPolicy Always + the fixed image name
+# means it always runs the build that was just pushed.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp
+  labels:
+    app: myapp-pod
+spec:
+  containers:
+    - name: myapp
+      image: ttl.sh/val4evr-myapp:24h
+      imagePullPolicy: Always
+      ports:
+        - containerPort: 4444
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 4444
+        initialDelaySeconds: 2
+        periodSeconds: 5

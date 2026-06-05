@@ -55,7 +55,13 @@ jobs:
           docker rm -f smoke
 
       - name: Push image
-        run: docker push "$IMAGE"
+        # Pushed under two names: the per-commit name (Deployment rollouts are
+        # unambiguous) and a fixed name (the bare myapp pod manifest stays
+        # appliable as-is; pullPolicy Always picks up the fresh bytes).
+        run: |
+          docker push "$IMAGE"
+          docker tag "$IMAGE" ttl.sh/val4evr-myapp:24h
+          docker push ttl.sh/val4evr-myapp:24h
 
   deploy-target:
     needs: test-and-build
@@ -116,7 +122,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Apply manifests
-        run: kubectl apply -f k8s/
+        # The bare `myapp` pod is immutable in the fields that matter — delete
+        # and re-create it so pullPolicy Always fetches this run's image.
+        run: |
+          kubectl delete pod myapp --ignore-not-found
+          kubectl apply -f k8s/
+          kubectl wait --for=condition=Ready pod/myapp --timeout=120s
       - name: Point the deployment at this run's image
         # The manifest's image is a placeholder; the per-commit image name makes
         # the rollout an unambiguous change (no stale-cache reuse possible).

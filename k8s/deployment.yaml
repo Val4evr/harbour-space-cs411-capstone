@@ -1,0 +1,39 @@
+# The k8s translation of the homework's systemd unit:
+#   systemd Restart=on-failure  ->  Deployment restartPolicy (Always) + livenessProbe
+#   "is it actually serving?"   ->  readinessProbe gates Service traffic
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: capstone
+  labels:
+    app: capstone
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: capstone
+  template:
+    metadata:
+      labels:
+        app: capstone
+    spec:
+      containers:
+        - name: capstone
+          image: ttl.sh/val4evr-capstone:24h
+          # The ttl.sh tag is transient; once a node has pulled the image, keep
+          # using it rather than failing when the registry copy expires.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4444
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4444
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4444
+            initialDelaySeconds: 2
+            periodSeconds: 5

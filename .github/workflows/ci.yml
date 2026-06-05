@@ -1,0 +1,63 @@
+# CS411 capstone pipeline: push to main -> build + push image -> deploy to k8s.
+#
+# Two jobs, two runners, registry in between:
+#   build  — GitHub-hosted runner (amd64): docker build, push to ttl.sh (anonymous
+#            transient registry; the tag IS the TTL). The runner cannot reach the
+#            lab network and never needs to — the registry is the rendezvous.
+#   deploy — self-hosted runner ON the lab's kubernetes box. The runner only makes
+#            outbound connections to GitHub (long-poll), which is why it works from
+#            behind the playground NAT. It applies the manifests and restarts the
+#            rollout so the pod pulls the image that was just pushed.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  IMAGE: ttl.sh/val4evr-capstone:24h
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t "$IMAGE" .
+
+      - name: Smoke-test image
+        # A green pipeline must mean the app serves traffic, not just that the
+        # build compiled (the ch2 health-gate lesson, ported to CI).
+        run: |
+          docker run -d --name smoke -p 4444:4444 "$IMAGE"
+          for i in $(seq 1 10); do
+            curl -fsS http://localhost:4444/health && break || sleep 1
+          done
+          curl -fsS http://localhost:4444/ | grep '"Name":"Hello"'
+          docker rm -f smoke
+
+      - name: Push image
+        run: docker push "$IMAGE"
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply manifests
+        run: kubectl apply -f k8s/
+
+      - name: Roll the deployment
+        # The image tag is fixed, so apply alone won't repull; restart forces the
+        # pods to pull the image this run just pushed.
+        run: |
+          kubectl rollout restart deployment/capstone
+          kubectl rollout status deployment/capstone --timeout=120s
+
+      - name: Verify through the Service
+        run: |
+          curl -fsS http://localhost:30444/health
+          curl -fsS http://localhost:30444/ | grep '"Name":"Hello"'

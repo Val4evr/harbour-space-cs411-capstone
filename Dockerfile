@@ -1,22 +1,21 @@
-# CS411 capstone image. Carries over two habits from the Go-era challenges:
-# digest-pinned base (tags are mutable; the digest is content-addressed) and a
-# HEALTHCHECK. What had to change for Node: there is no static binary — the
-# runtime ships inside the image — so the base is node:22-alpine rather than
-# scratch, and the app is COPY'd source, not a compiled artifact.
-FROM node:22-alpine@sha256:968df39aedcea65eeb078fb336ed7191baf48f972b4479711397108be0966920
+# CS411 capstone image — exam spec: Node 24 + Express app (index.js).
+# Base pinned by digest (tags are mutable; the digest is content-addressed).
+FROM node:24-alpine@sha256:2bdb65ed1dab192432bc31c95f94155ca5ad7fc1392fb7eb7526ab682fa5bf14
 
 WORKDIR /app
 
-# No npm dependencies (plain node:http), so no package install step / lockfile —
-# COPY the source and run it directly.
-COPY package.json server.js ./
+# Install deps from the lockfile first so this layer caches across code-only changes.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
-# Run as the unprivileged user the node image ships with (ch2's non-root lesson).
+COPY index.js ./
+
+# Run as the unprivileged user the node image ships with.
 USER node
 
 EXPOSE 4444
 
-# Container-level liveness: wget ships with alpine's busybox.
-HEALTHCHECK --interval=10s --timeout=2s CMD wget -qO- http://localhost:4444/health || exit 1
+# The spec app serves only "/" — probe that (wget ships with alpine busybox).
+HEALTHCHECK --interval=10s --timeout=2s CMD wget -qO- http://localhost:4444/ || exit 1
 
-CMD ["node", "server.js"]
+CMD ["node", "index.js"]

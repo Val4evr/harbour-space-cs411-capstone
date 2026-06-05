@@ -1,6 +1,6 @@
-# The k8s translation of the homework's systemd unit:
-#   systemd Restart=on-failure  ->  Deployment restartPolicy (Always) + livenessProbe
-#   "is it actually serving?"   ->  readinessProbe gates Service traffic
+# k8s translation of the homework's systemd unit:
+#   Restart=on-failure -> restartPolicy(Always) + livenessProbe
+#   readinessProbe gates Service traffic until the app actually serves.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,20 +20,24 @@ spec:
       containers:
         - name: capstone
           image: ttl.sh/val4evr-capstone:24h
-          # The ttl.sh tag is transient; once a node has pulled the image, keep
-          # using it rather than failing when the registry copy expires.
+          # ttl.sh tags are transient; once pulled, keep the local image rather
+          # than failing when the registry copy expires.
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 4444
+              # hostPort so the app answers on kubernetes:4444 directly (the
+              # exam check curls the machines on :4444); single node + single
+              # replica makes this safe.
+              hostPort: 4444
           livenessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 4444
             initialDelaySeconds: 3
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 4444
             initialDelaySeconds: 2
             periodSeconds: 5

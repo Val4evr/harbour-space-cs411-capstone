@@ -1,10 +1,14 @@
 {
   "name": "cs411-capstone",
   "version": "1.0.0",
-  "description": "CS411 capstone: Node.js port of the course's hello-world JSON service",
-  "main": "server.js",
+  "description": "CS411 capstone: Express JSON service (exam spec)",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
   },
   "license": "MIT"
 }

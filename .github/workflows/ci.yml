@@ -1,13 +1,16 @@
-# CS411 capstone pipeline: push to main -> build + push image -> deploy to k8s.
+# CS411 capstone pipeline (exam spec): push to main -> unit test -> build+push
+# image -> deploy to ALL THREE lab machines (target, docker, kubernetes).
 #
-# Two jobs, two runners, registry in between:
-#   build  — GitHub-hosted runner (amd64): docker build, push to ttl.sh (anonymous
-#            transient registry; the tag IS the TTL). The runner cannot reach the
-#            lab network and never needs to — the registry is the rendezvous.
-#   deploy — self-hosted runner ON the lab's kubernetes box. The runner only makes
-#            outbound connections to GitHub (long-poll), which is why it works from
-#            behind the playground NAT. It applies the manifests and restarts the
-#            rollout so the pod pulls the image that was just pushed.
+#   test+build — GitHub-hosted runner: npm test (node 24), docker build,
+#                smoke-test, push to ttl.sh (anonymous transient registry).
+#   deploy-*   — self-hosted runner on the lab's kubernetes box (outbound-only
+#                long-poll, works behind the playground NAT). It can ssh to
+#                target and docker as laborant, and runs kubectl locally.
+#
+# Three deploy flavours = the course's three runtimes:
+#   target     systemd unit running node directly (challenge-2 shape)
+#   docker     docker run -p 4444:4444 from the registry (challenge-3 shape)
+#   kubernetes Deployment + Service via kubectl (capstone stretch)
 name: ci
 
 on:
@@ -19,45 +22,104 @@ env:
   IMAGE: ttl.sh/val4evr-capstone:24h
 
 jobs:
-  build:
+  test-and-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit test stage
+        run: npm test
 
       - name: Build image
         run: docker build -t "$IMAGE" .
 
       - name: Smoke-test image
-        # A green pipeline must mean the app serves traffic, not just that the
-        # build compiled (the ch2 health-gate lesson, ported to CI).
+        # Green must mean "serves traffic", not just "compiled" (ch2 lesson).
         run: |
           docker run -d --name smoke -p 4444:4444 "$IMAGE"
           for i in $(seq 1 10); do
-            curl -fsS http://localhost:4444/health && break || sleep 1
+            curl -fsS http://localhost:4444/ && break || sleep 1
           done
-          curl -fsS http://localhost:4444/ | grep '"Name":"Hello"'
+          curl -fsS http://localhost:4444/ | grep '"name":"Hello"'
           docker rm -f smoke
 
       - name: Push image
         run: docker push "$IMAGE"
 
-  deploy:
-    needs: build
+  deploy-target:
+    needs: test-and-build
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
+      - name: Deploy to target (node + systemd)
+        run: |
+          set -eu
+          tar czf /tmp/app.tar.gz index.js package.json package-lock.json
+          scp -o StrictHostKeyChecking=no /tmp/app.tar.gz target:/tmp/app.tar.gz
+          ssh -o StrictHostKeyChecking=no target 'sudo bash -s' <<'REMOTE'
+          set -eu
+          command -v node >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq nodejs npm; }
+          mkdir -p /opt/capstone
+          tar xzf /tmp/app.tar.gz -C /opt/capstone
+          cd /opt/capstone && npm ci --omit=dev --no-audit --no-fund
+          cat > /etc/systemd/system/capstone.service <<'UNIT'
+          [Unit]
+          Description=CS411 capstone Node service
+          After=network.target
 
+          [Service]
+          ExecStart=/usr/bin/node /opt/capstone/index.js
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          systemctl daemon-reload
+          systemctl enable capstone.service
+          systemctl restart capstone.service
+          REMOTE
+      - name: Verify target
+        run: |
+          sleep 2
+          curl -fsS http://target:4444/ | grep '"name":"Hello"'
+
+  deploy-docker:
+    needs: test-and-build
+    runs-on: self-hosted
+    steps:
+      - name: Deploy to docker VM (pull + run from registry)
+        run: |
+          ssh -o StrictHostKeyChecking=no docker "
+            docker pull '$IMAGE'
+            docker rm -f capstone 2>/dev/null || true
+            docker run -d --name capstone -p 4444:4444 '$IMAGE'
+          "
+      - name: Verify docker
+        run: |
+          sleep 2
+          curl -fsS http://docker:4444/ | grep '"name":"Hello"'
+
+  deploy-kubernetes:
+    needs: test-and-build
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
       - name: Apply manifests
         run: kubectl apply -f k8s/
-
       - name: Roll the deployment
-        # The image tag is fixed, so apply alone won't repull; restart forces the
-        # pods to pull the image this run just pushed.
+        # Fixed tag -> apply alone won't repull; restart forces new pods that
+        # pull the image this run just pushed.
         run: |
           kubectl rollout restart deployment/capstone
           kubectl rollout status deployment/capstone --timeout=120s
-
-      - name: Verify through the Service
+      - name: Verify kubernetes (hostPort + Service)
         run: |
-          curl -fsS http://localhost:30444/health
-          curl -fsS http://localhost:30444/ | grep '"Name":"Hello"'
+          curl -fsS http://localhost:4444/ | grep '"name":"Hello"'
+          curl -fsS http://localhost:30444/ | grep '"name":"Hello"'

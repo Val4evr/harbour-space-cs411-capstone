@@ -121,8 +121,8 @@ jobs:
         # The manifest's image is a placeholder; the per-commit image name makes
         # the rollout an unambiguous change (no stale-cache reuse possible).
         run: |
-          kubectl set image deployment/capstone capstone="$IMAGE"
-          kubectl rollout status deployment/capstone --timeout=120s
+          kubectl set image deployment/myapp myapp="$IMAGE"
+          kubectl rollout status deployment/myapp --timeout=120s
       - name: Verify kubernetes (hostPort + Service)
         # Retry: rollout status returns on pod Ready, but the hostPort handover
         # can lag a second or two behind.

@@ -4,9 +4,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: capstone
+  name: myapp
   labels:
-    app: capstone
+    app: myapp
 spec:
   replicas: 1
   # hostPort means only one pod can bind :4444 per node — RollingUpdate would
@@ -16,15 +16,15 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: capstone
+      app: myapp
   template:
     metadata:
       labels:
-        app: capstone
+        app: myapp
     spec:
       containers:
-        - name: capstone
-          image: ttl.sh/val4evr-capstone:24h
+        - name: myapp
+          image: ttl.sh/val4evr-myapp:24h
           # ttl.sh tags are transient; once pulled, keep the local image rather
           # than failing when the registry copy expires.
           imagePullPolicy: IfNotPresent

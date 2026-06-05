@@ -138,8 +138,9 @@ jobs:
         # Retry: rollout status returns on pod Ready, but the hostPort handover
         # can lag a second or two behind.
         run: |
-          for i in $(seq 1 15); do
-            curl -fsS http://localhost:4444/ >/dev/null 2>&1 && break || sleep 2
+          for port in 4444 30444; do
+            for i in $(seq 1 15); do
+              curl -fsS "http://localhost:$port/" >/dev/null 2>&1 && break || sleep 2
+            done
+            curl -fsS "http://localhost:$port/" | grep '"name":"Hello"'
           done
-          curl -fsS http://localhost:4444/  | grep '"name":"Hello"'
-          curl -fsS http://localhost:30444/ | grep '"name":"Hello"'
